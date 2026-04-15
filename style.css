@@ -1,0 +1,166 @@
+/* ============================================================
+     OVERLAY TRANSPARENCY SETUP
+     In Electron: set BrowserWindow { transparent: true, frame: false }
+     In browser: background shows as black/checker — game logic still works
+  ============================================================ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    /* TRANSPARENT — in Electron this lets desktop show through */
+    background: transparent;
+    /* For browser testing, uncomment below to see a fake "desktop" bg */
+    /* background: #1a1a2e url('your-desktop-screenshot.jpg') center/cover; */
+  }
+
+  #game-wrapper {
+    position: fixed;
+    inset: 0;
+    /* When hidden, entire wrapper is invisible + non-interactive */
+    transition: opacity 0.08s ease;
+  }
+
+  #game-wrapper.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #game-canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* ============================================================
+     PAUSE MENU
+  ============================================================ */
+  #pause-menu {
+    display: none;
+    position: fixed;
+    inset: 0;
+    /* Semi-transparent dark overlay — still see-through enough for overlay feel */
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 999;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  #pause-menu.active {
+    display: flex;
+  }
+
+  .pause-card {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 16px;
+    padding: 48px 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  }
+
+  .pause-title {
+    font-size: 2.4rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.92);
+    text-shadow: 0 0 30px rgba(120,200,255,0.4);
+  }
+
+  .pause-subtitle {
+    font-size: 0.78rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-top: -12px;
+  }
+
+  .pause-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.9);
+    font-size: 0.95rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 14px 48px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 220px;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    font-family: inherit;
+  }
+
+  .pause-btn:hover {
+    background: rgba(255,255,255,0.18);
+    border-color: rgba(255,255,255,0.4);
+    transform: translateY(-1px);
+  }
+
+  .pause-btn:active { transform: translateY(0); }
+
+  .pause-btn.danger {
+    background: rgba(255, 80, 80, 0.12);
+    border-color: rgba(255, 80, 80, 0.3);
+    color: rgba(255, 130, 130, 0.9);
+  }
+
+  .pause-btn.danger:hover {
+    background: rgba(255, 80, 80, 0.22);
+    border-color: rgba(255, 80, 80, 0.5);
+  }
+
+  .keyhint {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.25);
+    letter-spacing: 0.1em;
+  }
+
+  /* ============================================================
+     HUD — height tracker
+  ============================================================ */
+  #hud {
+    position: fixed;
+    top: 24px;
+    right: 28px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.08em;
+    text-align: right;
+    pointer-events: none;
+    z-index: 10;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+  }
+
+  #hud .alt-val {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: rgba(255,255,255,0.75);
+    display: block;
+  }
+
+  /* ============================================================
+     SHOW/HIDE HINT  (top-left, fades after 5s)
+  ============================================================ */
+  #hint {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.3);
+    pointer-events: none;
+    transition: opacity 1s;
+    z-index: 10;
+  }

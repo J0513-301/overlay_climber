@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Overlay Climber</title>
+<link href="style.css" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: transparent;
+    /* Uncomment for browser testing: */
+    /* background: #1a1a2e; */
+  }
+
+  #game-wrapper {
+    position: fixed;
+    inset: 0;
+    transition: opacity 0.08s ease;
+  }
+  #game-wrapper.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #game-canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  #pause-menu {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 999;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+  #pause-menu.active { display: flex; }
+
+  .pause-card {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 16px;
+    padding: 48px 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  }
+  .pause-title {
+    font-size: 2.4rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.92);
+    text-shadow: 0 0 30px rgba(120,200,255,0.4);
+  }
+  .pause-subtitle {
+    font-size: 0.78rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-top: -8px;
+  }
+  .pause-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.9);
+    font-size: 0.95rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 14px 48px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 230px;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    font-family: inherit;
+  }
+  .pause-btn:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.4); transform: translateY(-1px); }
+  .pause-btn:active { transform: translateY(0); }
+  .pause-btn.danger { background: rgba(255,80,80,0.12); border-color: rgba(255,80,80,0.3); color: rgba(255,130,130,0.9); }
+  .pause-btn.danger:hover { background: rgba(255,80,80,0.22); border-color: rgba(255,80,80,0.5); }
+
+  .keyhint {
+    font-size: 0.68rem;
+    color: rgba(255,255,255,0.22);
+    letter-spacing: 0.08em;
+    text-align: center;
+    line-height: 1.7;
+  }
+
+  #hud {
+    position: fixed;
+    top: 24px;
+    right: 28px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.08em;
+    text-align: right;
+    pointer-events: none;
+    z-index: 10;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+  }
+  #hud .alt-val {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: rgba(255,255,255,0.75);
+    display: block;
+  }
+
+  #hint {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.3);
+    pointer-events: none;
+    transition: opacity 1s;
+    z-index: 10;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <canvas id="game-canvas"></canvas>
+  <div id="hud">
+    <span>ALTITUDE</span>
+    <span class="alt-val" id="alt-display">0 m</span>
+    <span id="best-display">BEST: 0 m</span>
+  </div>
+  <div id="hint">CLICK BACKGROUND TO HIDE · ESC TO PAUSE · H TO TOGGLE</div>
+</div>
+
+<div id="pause-menu">
+  <div class="pause-card">
+    <div class="pause-title">Paused</div>
+    <div class="pause-subtitle">Overlay Climber</div>
+    <button class="pause-btn" id="btn-resume">▶  Resume</button>
+    <button class="pause-btn" id="btn-restart">↺  New Random Level</button>
+    <button class="pause-btn danger" id="btn-hide">◻  Hide Game</button>
+    <div class="keyhint">
+      ESC to resume · H to hide<br>
+      Click background to hide instantly
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ================================================================
+//  OVERLAY CLIMBER
+//
+//  ┌─────────────────────────────────────────────────────────┐
+//  │  HOW TO USE YOUR OWN IMAGES                             │
+//  │                                                         │
+//  │  1. Put your PNG files in the SAME folder as this file  │
+//  │                                                         │
+//  │  2. PLATFORM IMAGES — add filenames to this array:      │
+//  │       const PLATFORM_IMAGES = ['rock.png', 'log.png']   │
+//  │     Any mix of shapes works. Pixel-perfect collision     │
+//  │     reads each PNG's alpha channel automatically.        │
+//  │                                                         │
+//  │  3. PLAYER SPRITE — set this to your filename:          │
+//  │       const PLAYER_IMAGE_SRC = 'character.png'          │
+//  │     Sprite should face RIGHT by default (engine flips). │
+//  │     Set PLAYER_W / PLAYER_H to your desired render size.│
+//  │                                                         │
+//  │  4. Save and run — that's it. No other changes needed.  │
+//  └─────────────────────────────────────────────────────────┘
+// ================================================================
+
+// ── YOUR IMAGE PATHS ─────────────────────────────────────────────
+const PLATFORM_IMAGES  = [
+  // 'cross.png',
+   'block_images/thumb.png',
+  // 'cloud.png',
+   'block_images/lev.png',
+   'block_images/mcfarland.jpeg',
+   'block_images/tim.jpg',
+   'block_images/manfredo.jpg',
+  // 'Peace.webp'
+];
+
+const PLAYER_IMAGE_SRC = 'phaser_dude.png';   // e.g. 'character.png'
+
+// ── Player render size (pixels on screen) ───────────────────────
+const PLAYER_W = 36;
+const PLAYER_H = 48;
+
+// ── Physics ──────────────────────────────────────────────────────
+const GRAVITY      = 0.4;
+const JUMP_FORCE   = 13.5;
+const MOVE_SPEED   = 4.8;
+const ROT_FRICTION = 0.85;   // how fast spin dies on landing
+const ALPHA_THRESH = 10;     // 0-255 — alpha below this = air
+
+// ── Canvas setup ────────────────────────────────────────────────
+const canvas = document.getElementById('game-canvas');
+const ctx    = canvas.getContext('2d', { willReadFrequently: true });
+
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+// ================================================================
+//  ASSET LOADING
+//  Each image gets an offscreen canvas drawn once so getImageData
+//  is fast during the collision loop every frame.
+// ================================================================
+const loadedImgs  = {};   // src → HTMLImageElement
+const imgPixelBuf = {};   // src → { canvas, ctx, w, h }
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    if (loadedImgs[src]) { resolve(loadedImgs[src]); return; }
+    const img = new Image();
+    img.onload = () => {
+      loadedImgs[src] = img;
+      const oc  = document.createElement('canvas');
+      oc.width  = img.naturalWidth;
+      oc.height = img.naturalHeight;
+      const oc_ctx = oc.getContext('2d');
+      oc_ctx.drawImage(img, 0, 0);
+      imgPixelBuf[src] = { canvas: oc, ctx: oc_ctx, w: oc.width, h: oc.height };
+      resolve(img);
+    };
+    img.onerror = () => reject(new Error('Cannot load: ' + src));
+    img.src = src;
+  });
+}
+
+// Returns alpha (0-255) at normalised coordinates (0..1) within an image
+function imgAlpha(src, nx, ny) {
+  const buf = imgPixelBuf[src];
+  if (!buf) return 255;
+  const px = Math.min(buf.w - 1, Math.max(0, Math.floor(nx * buf.w)));
+  const py = Math.min(buf.h - 1, Math.max(0, Math.floor(ny * buf.h)));
+  try { return buf.ctx.getImageData(px, py, 1, 1).data[3]; }
+  catch(e) { return 255; }
+}
+
+// ================================================================
+//  PROCEDURAL LEVEL GENERATOR
+//
+//  A reachable "spine" of platforms climbs from bottom to top.
+//  Every step is guaranteed within one double-jump's reach.
+//  Bonus platforms fill out the left, right, and edges.
+// ================================================================
+
+// Physics-derived jump limits
+const MAX_JUMP_HEIGHT = Math.floor(JUMP_FORCE * JUMP_FORCE / (2 * GRAVITY)) + 15;  // ≈220
+const MAX_JUMP_WIDTH  = Math.floor(MOVE_SPEED * 2 * JUMP_FORCE / GRAVITY);          // ≈310
+
+const COLORS = [
+  '#4ecdc4','#ff6b6b','#f7b731','#a29bfe','#fd79a8',
+  '#55efc4','#fdcb6e','#74b9ff','#e17055','#ff7675',
+];
+
+let PLATFORMS = [];
+
+function r(a, b)      { return a + Math.random() * (b - a); }
+function ri(a, b)     { return Math.floor(r(a, b)); }
+function pick(arr)    { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// Make a platform object and bake its collision offscreen canvas
+function makePlatform(x, y, w, h) {
+  const availSrcs = PLATFORM_IMAGES.filter(s => loadedImgs[s]);
+  const src   = availSrcs.length > 0 ? pick(availSrcs) : null;
+  const shape = src ? 'image' : pick(['rect','rect','rect','circle','polygon']);
+
+  const p = { x, y, w, h, src, shape, color: pick(COLORS), points: null, oc: null, oc_ctx: null };
+
+  if (shape === 'polygon') {
+    // Random irregular quad (always convex-ish, never too pointy)
+    const ix = w * r(0.05, 0.25);
+    const iy = h * r(0.05, 0.35);
+    p.points = [
+      [ix,        h],
+      [w - ix,    h],
+      [w - r(0, w * 0.2), iy],
+      [r(0, w * 0.2),     iy],
+    ];
+  }
+
+  // Bake procedural shapes into an offscreen pixel buffer
+  if (!src) {
+    const oc = document.createElement('canvas');
+    oc.width = w; oc.height = h;
+    const c = oc.getContext('2d');
+    c.fillStyle = p.color;
+    _drawShape(c, p, 0, 0);
+    p.oc = oc; p.oc_ctx = c;
+  }
+
+  return p;
+}
+
+function generateLevel() {
+  PLATFORMS = [];
+  const W = canvas.width;
+
+  // ── Starting platform ─────────────────────────────────────────
+  const sw = ri(260, 380);
+  PLATFORMS.push(makePlatform(W/2 - sw/2, 0, sw, 40));
+
+  // ── Spine: guaranteed reachable chain ─────────────────────────
+  let curX = W / 2;
+  let curY = 40;
+  const TOP = 2400;
+
+  while (curY < TOP) {
+    const w  = ri(70, 210);
+    const h  = ri(18, 55);
+    const up = ri(35, MAX_JUMP_HEIGHT - 8);
+    const dx = r(-(MAX_JUMP_WIDTH * 0.52), MAX_JUMP_WIDTH * 0.52);
+
+    let nx = curX + dx - w / 2;
+    nx = Math.max(18, Math.min(W - w - 18, nx));
+    const ny = curY + up;
+
+    PLATFORMS.push(makePlatform(nx, ny, w, h));
+    curX = nx + w / 2;
+    curY = ny + h;
+  }
+
+  // ── Bonus platforms: branches left/right from each spine node ─
+  const spineLen = PLATFORMS.length;
+  for (let i = 1; i < spineLen; i++) {
+    const ref = PLATFORMS[i];
+
+    // Side branch (60% chance)
+    if (Math.random() < 0.60) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const bw = ri(60, 175);
+      const bh = ri(16, 48);
+      const bx = ref.x + side * ri(ref.w * 0.5, ref.w + MAX_JUMP_WIDTH * 0.65) - bw / 2;
+      const by = ref.y + ri(-25, ref.h + 25);
+      if (bx > 10 && bx + bw < W - 10 && by > 0)
+        PLATFORMS.push(makePlatform(bx, by, bw, bh));
+    }
+
+    // Edge platform (30% chance) — keeps far left/right reachable
+    if (Math.random() < 0.30) {
+      const onLeft = Math.random() < 0.5;
+      const ew = ri(70, 150);
+      const eh = ri(16, 40);
+      const ex = onLeft ? ri(5, 90) : W - ew - ri(5, 90);
+      const ey = ref.y + ri(-50, 70);
+      if (ey > 0)
+        PLATFORMS.push(makePlatform(ex, ey, ew, eh));
+    }
+  }
+}
+
+// ================================================================
+//  PIXEL-PERFECT COLLISION
+//  worldX / worldY: world space (y=0 bottom, y increases upward)
+// ================================================================
+function isOpaqueWorld(worldX, worldY) {
+  for (const p of PLATFORMS) {
+    if (worldX < p.x || worldX > p.x + p.w) continue;
+    if (worldY < p.y || worldY > p.y + p.h) continue;
+
+    const lx = Math.floor(worldX - p.x);
+    // ly: flip y because canvas y goes down but world y goes up
+    const ly = Math.floor(p.h - (worldY - p.y));
+
+    if (lx < 0 || ly < 0 || lx >= p.w || ly >= p.h) continue;
+
+    let alpha = 0;
+    if (p.src && imgPixelBuf[p.src]) {
+      alpha = imgAlpha(p.src, lx / p.w, ly / p.h);
+    } else if (p.oc_ctx) {
+      try { alpha = p.oc_ctx.getImageData(lx, ly, 1, 1).data[3]; }
+      catch(e) { alpha = 0; }
+    }
+    if (alpha > ALPHA_THRESH) return true;
+  }
+  return false;
+}
+
+// ================================================================
+//  PLAYER STATE
+// ================================================================
+let cameraY = 0;
+let bestAlt = 0;
+let playerImg = null;
+
+const player = {
+  x: 0, y: 42,
+  vx: 0, vy: 0,
+  rotation: 0,    // radians — free spin
+  rotVel: 0,      // angular velocity (rad/frame)
+  onGround: false,
+  coyoteTime: 0,
+  jumpsLeft: 1,
+  facing: 1,      // 1 = right, -1 = left
+};
+
+function resetPlayer() {
+  player.x = canvas.width / 2 - PLAYER_W / 2;
+  player.y = 42;
+  player.vx = player.vy = 0;
+  player.rotation = player.rotVel = 0;
+  player.onGround = false;
+  player.coyoteTime = 0;
+  player.jumpsLeft = 1;
+  cameraY = 0;
+}
+
+// ================================================================
+//  INPUT
+// ================================================================
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Escape' && !hidden) paused ? resumeGame() : pauseGame();
+  if (e.code === 'KeyH') hidden ? showGame() : hideGame();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ================================================================
+//  GAME STATE / UI
+// ================================================================
+let paused = false, hidden = false;
+
+const wrapper     = document.getElementById('game-wrapper');
+const pauseMenu   = document.getElementById('pause-menu');
+const altDisplay  = document.getElementById('alt-display');
+const bestDisplay = document.getElementById('best-display');
+const hint        = document.getElementById('hint');
+
+setTimeout(() => { hint.style.opacity = '0'; }, 6000);
+
+function hideGame()   { hidden = true;  wrapper.classList.add('hidden');    pauseMenu.classList.remove('active'); paused = false; }
+function showGame()   { hidden = false; wrapper.classList.remove('hidden'); }
+function pauseGame()  { paused = true;  pauseMenu.classList.add('active'); }
+function resumeGame() { paused = false; pauseMenu.classList.remove('active'); }
+
+document.getElementById('btn-resume').addEventListener('click', resumeGame);
+document.getElementById('btn-hide').addEventListener('click', hideGame);
+document.getElementById('btn-restart').addEventListener('click', () => {
+  generateLevel();
+  resetPlayer();
+  bestAlt = 0;
+  resumeGame();
+});
+
+// Click-to-hide: only hides when clicking transparent (background) area
+canvas.addEventListener('mousedown', e => {
+  if (paused) return;
+  const sx = e.clientX, sy = e.clientY;
+  const wx = sx;
+  const wy = (canvas.height - sy) + cameraY;  // world coords
+
+  if (!isOpaqueWorld(wx, wy) && !clickOnPlayer(sx, sy)) hideGame();
+});
+
+function clickOnPlayer(sx, sy) {
+  const pcx = player.x + PLAYER_W / 2;
+  const pcy = canvas.height - (player.y - cameraY) - PLAYER_H / 2;
+  return Math.abs(sx - pcx) < PLAYER_W / 2 + 4 && Math.abs(sy - pcy) < PLAYER_H / 2 + 4;
+}
+
+// ================================================================
+//  SHAPE DRAWING (procedural platforms)
+// ================================================================
+function _drawShape(c, p, ox, oy) {
+  c.beginPath();
+  if (p.shape === 'rect') {
+    c.rect(ox, oy, p.w, p.h);
+  } else if (p.shape === 'circle') {
+    const r = Math.min(p.w, p.h) / 2;
+    c.arc(ox + p.w/2, oy + p.h/2, r, 0, Math.PI*2);
+  } else if (p.shape === 'polygon' && p.points) {
+    c.moveTo(ox + p.points[0][0], oy + p.points[0][1]);
+    for (let i = 1; i < p.points.length; i++)
+      c.lineTo(ox + p.points[i][0], oy + p.points[i][1]);
+    c.closePath();
+  } else {
+    c.rect(ox, oy, p.w, p.h); // fallback
+  }
+  c.fill();
+}
+
+// ================================================================
+//  UPDATE
+// ================================================================
+function update() {
+  if (paused || hidden) return;
+
+  const left  = keys['ArrowLeft']  || keys['KeyA'];
+  const right = keys['ArrowRight'] || keys['KeyD'];
+  const jump  = keys['ArrowUp']    || keys['KeyW'] || keys['Space'];
+
+  // Horizontal
+  if (left)  { player.vx = -MOVE_SPEED; player.facing = -1; }
+  if (right) { player.vx =  MOVE_SPEED; player.facing =  1; }
+  if (!left && !right) player.vx *= 0.72;
+
+  // Jump
+  if (jump && !keys['_jumpHeld']) {
+    if (player.coyoteTime > 0 || player.jumpsLeft > 0) {
+      player.vy = JUMP_FORCE;
+      player.jumpsLeft = Math.max(0, player.jumpsLeft - 1);
+      player.coyoteTime = 0;
+      keys['_jumpHeld'] = true;
+      // Chaotic kick rotation on jump — direction based on movement
+      player.rotVel = player.vx * 0.022 + (Math.random() - 0.5) * 0.18;
+    }
+  }
+  if (!jump) keys['_jumpHeld'] = false;
+
+  // Gravity & movement
+  player.vy -= GRAVITY;
+  player.x  += player.vx;
+  player.y  += player.vy;
+
+  // Screen bounds (allow slight overshoot for feel)
+  player.x = Math.max(-PLAYER_W * 0.25, Math.min(canvas.width - PLAYER_W * 0.75, player.x));
+
+  // ── Rotation ───────────────────────────────────────────────────
+  if (!player.onGround) {
+    // In air: spin naturally driven by horizontal velocity
+    const targetSpin = player.vx * 0.014;
+    player.rotVel += (targetSpin - player.rotVel) * 0.06;
+    player.rotation += player.rotVel;
+  } else {
+    // On ground: quickly damp spin, slowly snap back upright
+    player.rotVel  *= ROT_FRICTION;
+    player.rotation += player.rotVel;
+    // Lerp toward nearest full rotation (upright)
+    const nearest = Math.round(player.rotation / (Math.PI * 2)) * Math.PI * 2;
+    player.rotation += (nearest - player.rotation) * 0.18;
+  }
+
+  // ── Collision: feet (falling down) ────────────────────────────
+  player.onGround = false;
+  if (player.vy <= 0) {
+    const fy = player.y;
+    const probes = [
+      player.x + PLAYER_W * 0.15,
+      player.x + PLAYER_W * 0.50,
+      player.x + PLAYER_W * 0.85,
+    ];
+    for (const fx of probes) {
+      if (isOpaqueWorld(fx, fy)) {
+        // Walk up to exact surface
+        let sy = fy;
+        const maxWalk = Math.abs(player.vy) + 3;
+        while (sy < fy + maxWalk && isOpaqueWorld(fx, sy)) sy += 0.5;
+        player.y = sy;
+        player.vy = 0;
+        player.onGround   = true;
+        player.coyoteTime = 8;
+        player.jumpsLeft  = 1;
+        break;
+      }
+    }
+  }
+
+  // ── Collision: head (moving up) ────────────────────────────────
+  if (player.vy > 0) {
+    const hy = player.y + PLAYER_H;
+    const probes = [player.x + PLAYER_W * 0.2, player.x + PLAYER_W * 0.5, player.x + PLAYER_W * 0.8];
+    for (const hx of probes) {
+      if (isOpaqueWorld(hx, hy)) { player.vy = -0.5; break; }
+    }
+  }
+
+  if (!player.onGround) player.coyoteTime = Math.max(0, player.coyoteTime - 1);
+
+  // ── Fall death ────────────────────────────────────────────────
+  if (player.y < cameraY - 350) {
+    resetPlayer();
+  }
+
+  // ── Camera (smooth follow) ────────────────────────────────────
+  const targetCam = player.y - canvas.height * 0.35;
+  cameraY += (targetCam - cameraY) * 0.08;
+  cameraY = Math.max(0, cameraY);
+
+  // ── HUD ───────────────────────────────────────────────────────
+  const alt = Math.max(0, Math.floor(player.y - 42));
+  if (alt > bestAlt) bestAlt = alt;
+  altDisplay.textContent  = alt + ' m';
+  bestDisplay.textContent = 'BEST: ' + bestAlt + ' m';
+}
+
+// ================================================================
+//  RENDER
+// ================================================================
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const cam = cameraY;
+
+  // ── Platforms ─────────────────────────────────────────────────
+  for (const p of PLATFORMS) {
+    const sx = p.x;
+    const sy = canvas.height - (p.y - cam) - p.h;
+    if (sy > canvas.height + 80 || sy + p.h < -80) continue; // off-screen cull
+
+    if (p.src && loadedImgs[p.src]) {
+      ctx.drawImage(loadedImgs[p.src], sx, sy, p.w, p.h);
+    } else {
+      ctx.fillStyle   = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur  = 10;
+      _drawShape(ctx, p, sx, sy);
+      ctx.shadowBlur  = 0;
+    }
+  }
+
+  // ── Player ────────────────────────────────────────────────────
+  const pcx = player.x + PLAYER_W / 2;
+  const pcy = canvas.height - (player.y - cam) - PLAYER_H / 2;
+
+  ctx.save();
+  ctx.translate(pcx, pcy);
+  ctx.rotate(player.rotation);                        // free rotation
+  if (player.facing === -1) ctx.scale(-1, 1);         // flip for direction
+
+  if (playerImg) {
+    // ── Custom sprite ──────────────────────────────────────────
+    ctx.drawImage(playerImg, -PLAYER_W/2, -PLAYER_H/2, PLAYER_W, PLAYER_H);
+  } else {
+    // ── Procedural placeholder character ──────────────────────
+    ctx.shadowColor = 'rgba(255,255,255,0.45)';
+    ctx.shadowBlur  = 14;
+
+    // Body
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(-PLAYER_W/2 + 4, -PLAYER_H/2 + 14, PLAYER_W - 8, PLAYER_H - 14, 5);
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle   = '#ffe0cc';
+    ctx.shadowColor = 'rgba(255,200,150,0.4)';
+    ctx.shadowBlur  = 8;
+    ctx.beginPath();
+    ctx.arc(0, -PLAYER_H/2 + 10, 11, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye
+    ctx.fillStyle  = '#222';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(4, -PLAYER_H/2 + 9, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// ================================================================
+//  BOOT
+// ================================================================
+async function boot() {
+  // Load platform images (skip any that fail — procedural fallback)
+  for (const src of PLATFORM_IMAGES) {
+    try   { await loadImage(src); }
+    catch (e) { console.warn('Platform image not found:', src, '— using procedural shape instead'); }
+  }
+
+  // Load player sprite
+  if (PLAYER_IMAGE_SRC) {
+    try   { playerImg = await loadImage(PLAYER_IMAGE_SRC); }
+    catch (e) { console.warn('Player image not found:', PLAYER_IMAGE_SRC, '— using procedural character'); }
+  }
+
+  generateLevel();
+  resetPlayer();
+
+  function loop() { update(); render(); requestAnimationFrame(loop); }
+  loop();
+}
+
+boot();
+
+// ================================================================
+//  DRAG-AND-DROP IMAGES AT RUNTIME (optional, uncomment to enable)
+//
+//  Lets you drag PNG files directly onto the game window.
+//  Dropped images are added as platforms and the level regenerates.
+//
+//  window.addEventListener('dragover', e => e.preventDefault());
+//  window.addEventListener('drop', e => {
+//    e.preventDefault();
+//    [...e.dataTransfer.files].forEach(file => {
+//      if (!file.type.startsWith('image/')) return;
+//      const url = URL.createObjectURL(file);
+//      PLATFORM_IMAGES.push(url);
+//      loadImage(url).then(() => { generateLevel(); resetPlayer(); });
+//    });
+//  });
+// ================================================================
+</script>
+</body>
+</html>
